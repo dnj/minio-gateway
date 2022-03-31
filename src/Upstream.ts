@@ -122,11 +122,6 @@ export default class Upstream {
 		if (this.presentObjects.has(`${bucket}/${key}`)) {
 			this.presentObjects.delete(`${bucket}/${key}`);
 		}
-		console.log({
-			url: this.url.toString(),
-			presentObjects: [...this.presentObjects.values()],
-			absentObjects: [...this.absentObjects.values()],
-		});
 	}
 
 	public addAbsentObject(bucket: string, key: string): void {
@@ -137,12 +132,6 @@ export default class Upstream {
 		if (this.absentObjects.has(`${bucket}/${key}`)) {
 			this.absentObjects.delete(`${bucket}/${key}`);
 		}
-
-		console.log({
-			url: this.url.toString(),
-			presentObjects: [...this.presentObjects.values()],
-			absentObjects: [...this.absentObjects.values()],
-		});
 	}
 
 	public async hasObject(bucket: string, key: string): Promise<boolean> {
@@ -152,7 +141,6 @@ export default class Upstream {
 		}
 		const client = this.getClient();
 		try {
-			console.log(`asking about ${bucket}/${key} from upstream ${this.url.toString()}`);
 			await client.statObject(bucket, key);
 			this.addPresentObject(bucket, key);
 			return true;
@@ -160,5 +148,22 @@ export default class Upstream {
 			this.addAbsentObject(bucket, key);
 			return false;
 		}
+	}
+
+	public reset() {
+		this.absentObjects.clear();
+		this.presentObjects.clear();
+	}
+
+	public getURL() {
+		return this.url;
+	}
+
+	public toJson() {
+		return {
+			url: this.url.toString(),
+			presentObjects: [...this.presentObjects.values()],
+			absentObjects: [...this.absentObjects.values()],
+		};
 	}
 }
