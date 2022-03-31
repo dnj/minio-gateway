@@ -7,7 +7,7 @@ const command = new Command("serve");
 command.description('Run a reverse-proxy server');
 command.action(async (options) => {
 	try {
-		options.config = options.config || path.resolve(__dirname, "..", "config.json");
+		options.config = options.config || path.resolve(__dirname, "..", "..", "config.json");
 		const config = await ConfigRepository.fromFile(options.config);
 		const server = new Server(config);
 		server.listen();

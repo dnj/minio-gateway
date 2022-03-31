@@ -4,4 +4,4 @@
 /coverage
 /tsconfig.json
 /jest.config.js
-/dist/config.json
+/config.json

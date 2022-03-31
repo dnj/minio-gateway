@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "bin": "dist/index.js",
   "license": "MIT",
-  "type": "module",
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "devDependencies": {
@@ -21,7 +21,8 @@
     "minio": "^7.0.26"
   },
   "scripts": {
-    "build": "tsc",
+    "start": "dist/index.js",
+    "build": "tsc && chmod +x dist/index.js",
     "test": "jest"
   }
 }
