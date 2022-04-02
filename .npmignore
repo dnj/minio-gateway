@@ -5,3 +5,8 @@
 /tsconfig.json
 /jest.config.js
 /config.json
+/.github
+/misc
+/dist/*.map
+/.eslintignore
+/.eslintrc.js
