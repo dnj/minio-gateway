@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import Ajv, { JSONSchemaType } from 'ajv';
-import { singleton } from 'tsyringe';
+import { container, singleton } from 'tsyringe';
 import CacheManager from './CacheManager';
 import Upstream from './Upstream';
 
@@ -118,10 +118,7 @@ export default class ConfigRepository {
 
   protected primaryUpstream?: Upstream = undefined;
 
-  protected cacheManager: CacheManager;
-
   public constructor(protected data: IConfigData) {
-    this.cacheManager = new CacheManager(this);
   }
 
   public get(name: keyof IConfigData): any {
@@ -137,7 +134,8 @@ export default class ConfigRepository {
       if (this.data.peers === undefined) {
         this.data.peers = [];
       }
-      this.upstreams = this.data.peers.map((config) => new Upstream(new URL(config.url), config.accessKey, config.secretKey, this.cacheManager));
+      const cacheManager = container.resolve(CacheManager);
+      this.upstreams = this.data.peers.map((config) => new Upstream(new URL(config.url), config.accessKey, config.secretKey, cacheManager));
     }
     return this.upstreams.concat(includePrimary ? [this.getPrimaryUpstream()] : []);
   }
@@ -145,7 +143,8 @@ export default class ConfigRepository {
   public getPrimaryUpstream(): Upstream {
     if (this.primaryUpstream === undefined) {
       const config = this.data['primary-upstream'];
-      this.primaryUpstream = new Upstream(new URL(config.url), config.accessKey, config.secretKey, this.cacheManager);
+      const cacheManager = container.resolve(CacheManager);
+      this.primaryUpstream = new Upstream(new URL(config.url), config.accessKey, config.secretKey, cacheManager);
     }
     return this.primaryUpstream;
   }

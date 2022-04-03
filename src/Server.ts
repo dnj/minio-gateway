@@ -4,7 +4,10 @@ import RequestIdeafinder from './RequestIdeafinder';
 import { GetObject, PutObject } from './S3Requests';
 import Upstream from './Upstream';
 import Admin from './admin';
+import { inject, injectable } from 'tsyringe';
+import { Logger } from 'winston';
 
+@injectable()
 export default class Server {
   protected httpServer: http.Server;
 
@@ -12,7 +15,10 @@ export default class Server {
 
   private admin?: Admin;
 
-  public constructor(protected config: ConfigRepository) {
+  public constructor(
+    @inject(ConfigRepository) protected config: ConfigRepository,
+    @inject("Logger") protected logger: Logger
+  ) {
     this.httpServer = new http.Server(this.requestHandler.bind(this));
     this.requestIdeafinder = new RequestIdeafinder();
     if (this.config.getAdminAccess() !== undefined) {
@@ -27,7 +33,7 @@ export default class Server {
     }
     this.httpServer.listen(port, address);
 
-    console.log(`Server running on http://${address}:${port}`);
+    this.logger.info(`Server running on http://${address}:${port}`);
   }
 
   protected async requestHandler(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
@@ -39,21 +45,20 @@ export default class Server {
     const action = this.requestIdeafinder.findAction(request, this.config.getMainEndpoint());
     const primaryUpstream = this.config.getPrimaryUpstream();
 
-    if (process.env.NODE_ENV !== 'production') {
-      if (action !== undefined) {
-        action.request = undefined;
-        console.log({
-          url: request.url,
-          action,
-        });
-        action.request = request;
-      } else {
-        console.log({
-          url: request.url,
-          action,
-        });
+    const log: Record<string, any> = {
+      url: request.url,
+      canProxyToPeers,
+      action: action?.constructor.name,
+      method: request.method,
+    };
+    if (action !== undefined) {
+      for (const key in action) {
+        if (key !== "request" && key !== "method" && key !== "parameters") {
+          log[key] = action[key];
+        }
       }
     }
+    this.logger.http(`http request`, log);
 
     if (canProxyToPeers) {
       if (action !== undefined && action instanceof GetObject) {
@@ -73,7 +78,8 @@ export default class Server {
       if (check === true) {
         await upstream.proxyWithResponse(action, response);
         return;
-      } if (check === undefined) {
+      }
+      if (check === undefined) {
         checkLatter.push(upstream);
       }
     }

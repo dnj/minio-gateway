@@ -16,10 +16,14 @@ import UpdateBucketLifecycleWork from './Works/UpdateBucketLifecycleWork';
 import UpdateObjectLockConfigurationWork from './Works/UpdateObjectLockConfigurationWork';
 import UpdateBucketNotificationWork from './Works/UpdateBucketNotificationWork';
 import Work from './Work';
+import { delay, inject, singleton } from 'tsyringe';
+import { Logger } from 'winston';
 
+@singleton()
 export default class CacheManager {
   public constructor(
-    protected config: ConfigRepository,
+    @inject(delay(() => ConfigRepository)) protected config: ConfigRepository,
+    @inject("Logger") protected logger: Logger,
   ) {
 
   }
@@ -75,6 +79,11 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+    this.logger.info("Add work to create bucket in peers", {
+      work: "CreateBucketWork",
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+    });
     return this.addWorkForPeers(upstream, () => new CreateBucketWork(action.bucket, ''));
   }
 
@@ -82,6 +91,12 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+
+    this.logger.info("Add work to delete bucket in peers", {
+      work: "DeleteBucketWork",
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+    });
     return this.addWorkForPeers(upstream, () => new DeleteBucketWork(action.bucket));
   }
 
@@ -89,6 +104,12 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+
+    this.logger.info("Add work to update bucket policy in peers", {
+      work: "UpdateBucketPolicyWork",
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+    });
     return this.addWorkForPeers(upstream, () => new UpdateBucketPolicyWork(upstream, action.bucket));
   }
 
@@ -96,6 +117,12 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+
+    this.logger.info("Add work to update bucket tagging in peers", {
+      work: "UpdateBucketTaggingWork",
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+    });
     return this.addWorkForPeers(upstream, () => new UpdateBucketTaggingWork(upstream, action.bucket));
   }
 
@@ -103,6 +130,12 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+
+    this.logger.info("Add work to update bucket versioning in peers", {
+      work: "UpdateBucketVersioningWork",
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+    });
     return this.addWorkForPeers(upstream, () => new UpdateBucketVersioningWork(upstream, action.bucket));
   }
 
@@ -110,6 +143,12 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+
+    this.logger.info("Add work to update bucket lifecycle configuration in peers", {
+      work: "UpdateBucketLifecycleWork",
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+    });
     return this.addWorkForPeers(upstream, () => new UpdateBucketLifecycleWork(upstream, action.bucket));
   }
 
@@ -117,6 +156,12 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+
+    this.logger.info("Add work to update bucket object lock configuration in peers", {
+      work: "UpdateObjectLockConfigurationWork",
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+    });
     return this.addWorkForPeers(upstream, () => new UpdateObjectLockConfigurationWork(upstream, action.bucket));
   }
 
@@ -124,6 +169,11 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+    this.logger.info("Add work to update bucket notification configuration in peers", {
+      work: "UpdateBucketNotificationWork",
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+    });
     return this.addWorkForPeers(upstream, () => new UpdateBucketNotificationWork(upstream, action.bucket));
   }
 
@@ -146,6 +196,13 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+
+    this.logger.info("Add work to update object in peers", {
+      work: "CloneObjectWork",
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+      key: action.key,
+    });
     return this.addWorkForPeers(upstream, () => new CloneObjectWork(upstream, action.bucket, action.key));
   }
 
@@ -153,6 +210,13 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
+
+    this.logger.info("Add work to delete object in peers", {
+      source: upstream.getURL().toString(),
+      work: "DeleteObjectWork",
+      bucket: action.bucket,
+      key: action.key,
+    });
     return this.addWorkForPeers(upstream, () => new DeleteObjectWork(action.bucket, action.key));
   }
 
@@ -160,8 +224,15 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
 
     }
+
+    this.logger.error("Cannot add work to delete multiple objects in peers. It's not implemented", {
+      source: upstream.getURL().toString(),
+      bucket: action.bucket,
+    });
+
     // TODO
     // return this.addWorkForPeers(upstream, () => new DeleteObjectWork(action.bucket, action.key));
+    
   }
 
   protected isSuccessfull(response: IncomingMessage): boolean {
