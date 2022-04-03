@@ -10,7 +10,7 @@ export default class BucketItemDiffList extends DiffList<BucketItem> {
         return CompareResult.LESSER;
       }
 
-      if (src.etag !== dist.etag) {
+      if (src.size !== dist.size) {
         return CompareResult.SAME_BUT_CHANGED;
       }
       return CompareResult.SAME;
