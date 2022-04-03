@@ -35,7 +35,6 @@ export default class Upstream {
     if (headers['x-forwarded-host'] === undefined) {
       headers['x-forwarded-host'] = request.headers.host;
     }
-    delete headers.host;
     headers['x-gateway-no-proxy'] = 'true';
 
     let handler: typeof http | typeof https = http;
@@ -49,6 +48,7 @@ export default class Upstream {
       path: request.url,
       method: request.method,
       protocol: this.url.protocol,
+      setHost: false,
       headers,
     });
   }
