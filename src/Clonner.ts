@@ -162,6 +162,27 @@ export default class Clonner {
       }
     });
 
+    queue.on("added", () => {
+      if (queue.length() >= queue.getMaxRunning()) {
+        if (!sourceStream.isPaused()) {
+          sourceStream.pause();
+        }
+        if (!distStream.isPaused()) {
+          distStream.pause();
+        }
+      }
+    });
+    queue.on("finished", () => {
+      if (queue.length() < queue.getMaxRunning()) {
+        if (sourceStream.isPaused()) {
+          sourceStream.resume();
+        }
+        if (distStream.isPaused()) {
+          distStream.resume();
+        }
+      }
+    });
+
     const doneHandler = (size: number) => {
       if (this.progressBar !== undefined) {
         this.progressBar.increment(size, { workers: queue.getRunning() });
