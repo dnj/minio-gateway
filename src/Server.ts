@@ -74,7 +74,7 @@ export default class Server {
     }
   
     const checkLatter: Upstream[] = [];
-    for (const upstream of ContainerHelper.getSalves()) {
+    for (const upstream of upstreams) {
       const check = upstream.hasObjectOffline(action.bucket, action.key);
       if (check === true) {
         this.logRequest(action.request as http.IncomingMessage, true, action, upstream);
