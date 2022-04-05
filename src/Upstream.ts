@@ -99,7 +99,7 @@ export default class Upstream {
   public getClient(): Minio.Client {
     if (this.client !== null) {
       this.client = new MinioClient({
-        endPoint: this.url.hostname,
+        endPoint: this.url.host,
         accessKey: this.accessKey,
         secretKey: this.secretKey,
         useSSL: this.url.protocol === 'https',
