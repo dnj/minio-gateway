@@ -49,19 +49,19 @@ export default class Server {
     const minio = ContainerHelper.getMinio();
     const master = ContainerHelper.getMaster();
 
-    if (canProxyToPeers) {
-      if (action !== undefined) {
-        if (action instanceof GetObject) {
-          if (!await minio.hasObject(action.bucket, action.key)) {
-            this.proxyToPeers(action, response);
-            return;
-          }
-        } else if (request.method !== "GET" && master) {
-          this.logRequest(request, canProxyToPeers, action, master);
-          master.proxyWithResponse(action, response);
-          return;
-        }
-      }
+    if (
+      canProxyToPeers &&
+      action !== undefined &&
+      action instanceof GetObject &&
+      !await minio.hasObject(action.bucket, action.key)
+    ) {
+      this.proxyToPeers(action, response);
+      return;
+    }
+    if (master !== undefined && request.method !== "GET" && canProxyToPeers) {
+      this.logRequest(request, canProxyToPeers, action, master);
+      master.proxyWithResponse(action || request, response);
+      return;
     }
     this.proxyToMinio(action || request, response);
   }
