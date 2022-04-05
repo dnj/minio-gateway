@@ -28,6 +28,10 @@ export interface ICacheConfig {
   resetInterval: number;
 }
 
+export interface ICloneConfig {
+  maxRunning: number;
+}
+
 interface IConfigData {
   'main-endpoint': string;
   'minio': IConfigMinio;
@@ -37,6 +41,7 @@ interface IConfigData {
   'admin-access': IAdminAccess;
   'logging': ILoggingConfig;
   'cache': ICacheConfig;
+  'clone': ICloneConfig;
 }
 
 const upstreamSchema: JSONSchemaType<IConfigMinio> = {
@@ -97,6 +102,18 @@ const cacheSchema: JSONSchemaType<ICacheConfig> = {
   additionalProperties: false,
 };
 
+const cloneSchema: JSONSchemaType<ICloneConfig> = {
+  type: 'object',
+  properties: {
+    maxRunning: {
+      type: 'integer',
+      default: 8,
+    },
+  },
+  required: [],
+  additionalProperties: false,
+};
+
 const schema: JSONSchemaType<IConfigData> = {
   type: 'object',
   properties: {
@@ -111,6 +128,7 @@ const schema: JSONSchemaType<IConfigData> = {
     'admin-access': adminAccessSchema,
     logging: loggingSchema,
     cache: cacheSchema,
+    clone: cloneSchema,
   },
   required: ['main-endpoint', 'minio'],
   additionalProperties: true,
@@ -181,6 +199,10 @@ export default class ConfigRepository {
 
   public getCache(): ICacheConfig {
     return this.data.cache;
+  }
+
+  public getClone(): ICloneConfig {
+    return this.data.clone;
   }
 
 }

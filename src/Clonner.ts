@@ -40,6 +40,7 @@ export default class Clonner {
   private progressBar: SingleBar | undefined;
 
   public constructor(
+    @inject(ConfigRepository) private config: ConfigRepository,
     @inject('Logger') private logger: winston.Logger,
   ) {
   }
@@ -149,7 +150,8 @@ export default class Clonner {
       const source = this.getSource();
       const diffList = new BucketItemDiffList();
       const queue = new WorkQueue(dist);
-      queue.setMaxRunning(8);
+      const maxRunning = this.config.getClone().maxRunning || 8;
+      queue.setMaxRunning(maxRunning);
 
       const sourceStream = source.getClient().listObjectsV2(bucket, undefined, true);
       sourceStream.on('data', (object) => {
