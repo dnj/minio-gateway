@@ -18,9 +18,11 @@ import UpdateBucketNotificationWork from './Works/UpdateBucketNotificationWork';
 import Work from './Work';
 import { delay, inject, singleton } from 'tsyringe';
 import { Logger } from 'winston';
+import ContainerHelper from './ContainerHelper';
 
 @singleton()
 export default class CacheManager {
+  protected interval: NodeJS.Timer | undefined;
   public constructor(
     @inject(delay(() => ConfigRepository)) protected config: ConfigRepository,
     @inject("Logger") protected logger: Logger,
@@ -28,50 +30,74 @@ export default class CacheManager {
 
   }
 
+  public setupClearInterval(): void {
+    const resetInterval = this.config.getCache()?.resetInterval || 3600;
+    this.interval = setInterval(() => {
+      this.resetAllUpstreams();
+    }, resetInterval * 1000);
+  }
+
+  public resetAllUpstreams() {
+    for (const upstream of ContainerHelper.getUpstreams(true)) {
+      this.logger.info("Reset upstream cache", {upstream: upstream.getURL().toString()});
+      upstream.reset();
+    }
+  }
+
   public handleResponse(
     upstream: Upstream,
     action: Action,
     response: IncomingMessage,
   ) {
+
     if (action instanceof CreateBucket) {
       return this.handleCreateBucket(upstream, action, response);
     }
     if (action instanceof PutBucketPolicy) {
       return this.handlePutBucketPolicy(upstream, action, response);
     }
-    if (action instanceof PutBucketTagging) {
-      return this.handlePutBucketTagging(upstream, action, response);
-    }
-    if (action instanceof PutBucketVersioning) {
-      return this.handlePutBucketVersioning(upstream, action, response);
-    }
-    if (action instanceof PutBucketLifecycleConfiguration) {
-      return this.handlePutBucketLifecycle(upstream, action, response);
-    }
-    if (action instanceof PutObjectLockConfiguration) {
-      return this.handlePutObjectLockConfiguration(upstream, action, response);
-    }
-    if (action instanceof PutBucketNotificationConfiguration) {
-      return this.handlePutBucketNotification(upstream, action, response);
-    }
+
     if (action instanceof DeleteBucket) {
       return this.handleDeleteBucket(upstream, action, response);
     }
+
     if (action instanceof GetObject) {
       return this.handleGetObject(upstream, action, response);
     }
+  
     if (
       action instanceof PutObject
-			|| action instanceof CompleteMultipartUpload
-			|| action instanceof CopyObject
+      || action instanceof CompleteMultipartUpload
+      || action instanceof CopyObject
     ) {
       return this.handlePutObject(upstream, action, response);
     }
+
     if (action instanceof DeleteObject) {
       return this.handleDeleteObject(upstream, action, response);
     }
     if (action instanceof DeleteObjects) {
       return this.handleDeleteObjects(upstream, action, response);
+    }
+    
+    if (this.config.isMaster()) {
+  
+      if (action instanceof PutBucketTagging) {
+        return this.handlePutBucketTagging(upstream, action, response);
+      }
+      if (action instanceof PutBucketVersioning) {
+        return this.handlePutBucketVersioning(upstream, action, response);
+      }
+      if (action instanceof PutBucketLifecycleConfiguration) {
+        return this.handlePutBucketLifecycle(upstream, action, response);
+      }
+      if (action instanceof PutObjectLockConfiguration) {
+        return this.handlePutObjectLockConfiguration(upstream, action, response);
+      }
+      if (action instanceof PutBucketNotificationConfiguration) {
+        return this.handlePutBucketNotification(upstream, action, response);
+      }
+
     }
   }
 
@@ -79,38 +105,51 @@ export default class CacheManager {
     if (!this.isSuccessfull(response)) {
       return;
     }
-    this.logger.info("Add work to create bucket in peers", {
-      work: "CreateBucketWork",
-      source: upstream.getURL().toString(),
-      bucket: action.bucket,
-    });
-    return this.addWorkForPeers(upstream, () => new CreateBucketWork(action.bucket, ''));
+
+    upstream.removeAbsentObject(action.bucket);
+
+    if (this.config.isMaster()) {
+      this.logger.info("Add work to create bucket in peers", {
+        work: "CreateBucketWork",
+        source: upstream.getURL().toString(),
+        bucket: action.bucket,
+      });
+      return this.addWorkForPeers(upstream, () => new CreateBucketWork(action.bucket, ''));
+    }
   }
 
   protected handleDeleteBucket(upstream: Upstream, action: DeleteBucket, response: IncomingMessage) {
     if (!this.isSuccessfull(response)) {
       return;
     }
+    upstream.removePresentObject(action.bucket);
 
-    this.logger.info("Add work to delete bucket in peers", {
-      work: "DeleteBucketWork",
-      source: upstream.getURL().toString(),
-      bucket: action.bucket,
-    });
-    return this.addWorkForPeers(upstream, () => new DeleteBucketWork(action.bucket));
+    if (this.config.isMaster()) {
+      this.logger.info("Add work to delete bucket in peers", {
+        work: "DeleteBucketWork",
+        source: upstream.getURL().toString(),
+        bucket: action.bucket,
+      });
+      return this.addWorkForPeers(upstream, () => new DeleteBucketWork(action.bucket));
+    }
   }
 
   protected handlePutBucketPolicy(upstream: Upstream, action: PutBucketPolicy, response: IncomingMessage) {
     if (!this.isSuccessfull(response)) {
       return;
     }
-
-    this.logger.info("Add work to update bucket policy in peers", {
-      work: "UpdateBucketPolicyWork",
-      source: upstream.getURL().toString(),
-      bucket: action.bucket,
-    });
-    return this.addWorkForPeers(upstream, () => new UpdateBucketPolicyWork(upstream, action.bucket));
+  
+    upstream.removeAbsentObject(action.bucket);
+    upstream.removePresentObject(action.bucket);
+  
+    if (this.config.isMaster()) {
+      this.logger.info("Add work to update bucket policy in peers", {
+        work: "UpdateBucketPolicyWork",
+        source: upstream.getURL().toString(),
+        bucket: action.bucket,
+      });
+      return this.addWorkForPeers(upstream, () => new UpdateBucketPolicyWork(upstream, action.bucket));
+    }
   }
 
   protected handlePutBucketTagging(upstream: Upstream, action: PutBucketTagging, response: IncomingMessage) {
@@ -197,27 +236,35 @@ export default class CacheManager {
       return;
     }
 
-    this.logger.info("Add work to update object in peers", {
-      work: "CloneObjectWork",
-      source: upstream.getURL().toString(),
-      bucket: action.bucket,
-      key: action.key,
-    });
-    return this.addWorkForPeers(upstream, () => new CloneObjectWork(upstream, action.bucket, action.key));
+    upstream.removeAbsentObject(action.bucket, action.key);
+  
+    if (this.config.isMaster()) {
+      this.logger.info("Add work to update object in peers", {
+        work: "CloneObjectWork",
+        source: upstream.getURL().toString(),
+        bucket: action.bucket,
+        key: action.key,
+      });
+      return this.addWorkForPeers(upstream, () => new CloneObjectWork(upstream, action.bucket, action.key));
+    }
   }
 
   protected handleDeleteObject(upstream: Upstream, action: DeleteObject, response: IncomingMessage) {
     if (!this.isSuccessfull(response)) {
       return;
     }
+  
+    upstream.removePresentObject(action.bucket, action.key);
 
-    this.logger.info("Add work to delete object in peers", {
-      source: upstream.getURL().toString(),
-      work: "DeleteObjectWork",
-      bucket: action.bucket,
-      key: action.key,
-    });
-    return this.addWorkForPeers(upstream, () => new DeleteObjectWork(action.bucket, action.key));
+    if (this.config.isMaster()) {
+      this.logger.info("Add work to delete object in peers", {
+        source: upstream.getURL().toString(),
+        work: "DeleteObjectWork",
+        bucket: action.bucket,
+        key: action.key,
+      });
+      return this.addWorkForPeers(upstream, () => new DeleteObjectWork(action.bucket, action.key));
+    }
   }
 
   protected handleDeleteObjects(upstream: Upstream, action: DeleteObjects, response: IncomingMessage) {
@@ -239,12 +286,8 @@ export default class CacheManager {
     return (response.statusCode !== undefined && response.statusCode >= 200 && response.statusCode < 300);
   }
 
-  protected findPeers(source: Upstream): Upstream[] {
-    return this.config.getUpstreams(true).filter((item) => item !== source);
-  }
-
   protected addWorkForPeers<T>(source: Upstream, callback: (peer: Upstream) => Work<T>) {
-    return Promise.allSettled(this.findPeers(source)
+    return Promise.allSettled(ContainerHelper.getSalves()
       .map((peer) => {
         const work = callback(peer);
         return peer.workQueue.enqueue(work);

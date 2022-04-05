@@ -6,6 +6,9 @@ import Upstream from './Upstream';
 import Admin from './admin';
 import { inject, injectable } from 'tsyringe';
 import { Logger } from 'winston';
+import Action from './S3Requests/Action';
+import ContainerHelper from './ContainerHelper';
+import arrayShuffle from 'array-shuffle';
 
 @injectable()
 export default class Server {
@@ -43,13 +46,67 @@ export default class Server {
     }
     const canProxyToPeers = this.canProxyToPeers(request);
     const action = this.requestIdeafinder.findAction(request, this.config.getMainEndpoint());
-    const primaryUpstream = this.config.getPrimaryUpstream();
+    const minio = ContainerHelper.getMinio();
+    const master = ContainerHelper.getMaster();
 
+    if (canProxyToPeers) {
+      if (action !== undefined) {
+        if (action instanceof GetObject) {
+          if (!await minio.hasObject(action.bucket, action.key)) {
+            this.proxyToPeers(action, response);
+            return;
+          }
+        } else if (request.method !== "GET" && master) {
+          this.logRequest(request, canProxyToPeers, action, master);
+          master.proxyWithResponse(action, response);
+          return;
+        }
+      }
+    }
+    this.proxyToMinio(action || request, response);
+  }
+
+  protected async proxyToPeers(action: GetObject, response: http.ServerResponse) {
+    const upstreams = arrayShuffle(ContainerHelper.getSalves());
+    const master = ContainerHelper.getMaster();
+    if (master) {
+      upstreams.push(master);
+    }
+  
+    const checkLatter: Upstream[] = [];
+    for (const upstream of ContainerHelper.getSalves()) {
+      const check = upstream.hasObjectOffline(action.bucket, action.key);
+      if (check === true) {
+        this.logRequest(action.request as http.IncomingMessage, true, action, upstream);
+        upstream.proxyWithResponse(action, response);
+        return;
+      }
+      if (check === undefined) {
+        checkLatter.push(upstream);
+      }
+    }
+    for (const upstream of checkLatter) {
+      if (await upstream.hasObject(action.bucket, action.key)) {
+        this.logRequest(action.request as http.IncomingMessage, true, action, upstream);
+        upstream.proxyWithResponse(action, response);
+        return;
+      }
+    }
+  
+    this.proxyToMinio(action, response);
+  }
+
+  protected canProxyToPeers(request: http.IncomingMessage): boolean {
+    return request.headers['x-gateway-no-proxy'] === undefined;
+  }
+
+  protected logRequest(request: http.IncomingMessage, canProxyToPeers: boolean, action: Action | undefined, upstream: Upstream) {
     const log: Record<string, any> = {
       url: request.url,
       canProxyToPeers,
       action: action?.constructor.name,
       method: request.method,
+      upstream: upstream.getURL().toString(),
     };
     if (action !== undefined) {
       for (const key in action) {
@@ -59,40 +116,17 @@ export default class Server {
       }
     }
     this.logger.http(`http request`, log);
-
-    if (canProxyToPeers) {
-      if (action !== undefined && action instanceof GetObject) {
-        if (!await primaryUpstream.hasObject(action.bucket, action.key)) {
-          this.proxyToPeers(action, response);
-          return;
-        }
-      }
-    }
-    primaryUpstream.proxyWithResponse(action || request, response);
   }
 
-  protected async proxyToPeers(action: GetObject, response: http.ServerResponse) {
-    const checkLatter: Upstream[] = [];
-    for (const upstream of this.config.getUpstreams(false)) {
-      const check = upstream.hasObjectOffline(action.bucket, action.key);
-      if (check === true) {
-        await upstream.proxyWithResponse(action, response);
-        return;
-      }
-      if (check === undefined) {
-        checkLatter.push(upstream);
-      }
-    }
-    for (const upstream of checkLatter) {
-      if (await upstream.hasObject(action.bucket, action.key)) {
-        await upstream.proxyWithResponse(action, response);
-        return;
-      }
-    }
-    await this.config.getPrimaryUpstream().proxyWithResponse(action, response);
-  }
+  protected proxyToMinio(request: http.IncomingMessage | Action, response: http.ServerResponse) {
+    const minio = ContainerHelper.getMinio();
 
-  protected canProxyToPeers(request: http.IncomingMessage): boolean {
-    return request.headers['x-gateway-no-proxy'] === undefined;
+    let action: Action|undefined;
+    if (request instanceof Action) {
+      action = request;
+      request = request.request as http.IncomingMessage;
+    }
+    this.logRequest(request, false, action, minio);
+    return minio.proxyWithResponse(action || request, response);
   }
 }

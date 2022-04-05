@@ -1,5 +1,6 @@
 import express from 'express';
 import ConfigRepository from '../ConfigRepository';
+import ContainerHelper from '../ContainerHelper';
 import Upstream from '../Upstream';
 
 export default class Upstreams {
@@ -10,8 +11,9 @@ export default class Upstreams {
   public search(req: express.Request, res: express.Response) {
     res.json({
       status: true,
-      peers: this.config.getUpstreams(false).map((upstream) => upstream.toJson()),
-      primary: this.config.getPrimaryUpstream().toJson(),
+      slaves: ContainerHelper.getSalves().map((upstream) => upstream.toJson()),
+      minio: ContainerHelper.getMinio().toJson(),
+      master: ContainerHelper.getMaster()?.toJson(),
     });
   }
 
@@ -41,7 +43,7 @@ export default class Upstreams {
   public resetAll(req: express.Request, res: express.Response) {
     res.json({
       status: true,
-      upstreams: this.config.getUpstreams(true).map((upstream) => {
+      upstreams: ContainerHelper.getUpstreams(true).map((upstream) => {
         upstream.reset();
         return upstream.toJson();
       }),
@@ -67,7 +69,7 @@ export default class Upstreams {
 
       return undefined;
     }
-    const upstream = this.config.getUpstreams(true).find((item) => item.getURL().hostname === req.params.upstream);
+    const upstream = ContainerHelper.getUpstreams(true).find((item) => item.getURL().hostname === req.params.upstream);
     if (upstream === undefined) {
       res.status(404).json({
         status: false,

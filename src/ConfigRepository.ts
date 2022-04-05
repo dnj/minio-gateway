@@ -1,10 +1,9 @@
 import * as fs from 'fs/promises';
 import Ajv, { JSONSchemaType } from 'ajv';
 import { container, singleton } from 'tsyringe';
-import CacheManager from './CacheManager';
 import Upstream from './Upstream';
 
-interface IConfigUpstream {
+export interface IConfigMinio {
   url: string;
   accessKey: string;
   secretKey: string;
@@ -25,16 +24,22 @@ export interface ILoggingConfig {
   console: boolean;
 }
 
+export interface ICacheConfig {
+  resetInterval: number;
+}
+
 interface IConfigData {
   'main-endpoint': string;
-  'primary-upstream': IConfigUpstream;
-  'peers'?: IConfigUpstream[];
+  'minio': IConfigMinio;
+  'master': IConfigMinio;
+  'slaves': IConfigMinio[];
   'http-server': IHttpServerConfig;
   'admin-access': IAdminAccess;
   'logging': ILoggingConfig;
+  'cache': ICacheConfig;
 }
 
-const upstreamSchema: JSONSchemaType<IConfigUpstream> = {
+const upstreamSchema: JSONSchemaType<IConfigMinio> = {
   type: 'object',
   properties: {
     url: { type: 'string' },
@@ -80,21 +85,34 @@ const loggingSchema: JSONSchemaType<ILoggingConfig> = {
   additionalProperties: false,
 };
 
+const cacheSchema: JSONSchemaType<ICacheConfig> = {
+  type: 'object',
+  properties: {
+    resetInterval: {
+      type: 'integer',
+      default: 3600,
+    },
+  },
+  required: [],
+  additionalProperties: false,
+};
+
 const schema: JSONSchemaType<IConfigData> = {
   type: 'object',
   properties: {
     'main-endpoint': { type: 'string' },
-    'primary-upstream': upstreamSchema,
+    'minio': upstreamSchema,
+    'master': upstreamSchema,
     'http-server': httpServerSchema,
-    peers: {
+    slaves: {
       type: 'array',
       items: upstreamSchema,
-      nullable: true,
     },
     'admin-access': adminAccessSchema,
     logging: loggingSchema,
+    cache: cacheSchema,
   },
-  required: ['main-endpoint', 'primary-upstream'],
+  required: ['main-endpoint', 'minio'],
   additionalProperties: true,
 };
 
@@ -129,25 +147,6 @@ export default class ConfigRepository {
     return this.data['main-endpoint'];
   }
 
-  public getUpstreams(includePrimary: boolean = false): Upstream[] {
-    if (this.upstreams === undefined) {
-      if (this.data.peers === undefined) {
-        this.data.peers = [];
-      }
-      const cacheManager = container.resolve(CacheManager);
-      this.upstreams = this.data.peers.map((config) => new Upstream(new URL(config.url), config.accessKey, config.secretKey, cacheManager));
-    }
-    return this.upstreams.concat(includePrimary ? [this.getPrimaryUpstream()] : []);
-  }
-
-  public getPrimaryUpstream(): Upstream {
-    if (this.primaryUpstream === undefined) {
-      const config = this.data['primary-upstream'];
-      const cacheManager = container.resolve(CacheManager);
-      this.primaryUpstream = new Upstream(new URL(config.url), config.accessKey, config.secretKey, cacheManager);
-    }
-    return this.primaryUpstream;
-  }
 
   public getHttpServerConfig() {
     return this.data['http-server'];
@@ -160,4 +159,28 @@ export default class ConfigRepository {
   public getLogging(): ILoggingConfig {
     return this.data.logging;
   }
+
+  public isMaster(): boolean {
+    return this.data.master === undefined;
+  }
+
+  public isSlave(): boolean {
+    return this.data.master !== undefined;
+  }
+  public getMinio(): IConfigMinio {
+    return this.data.minio;
+  }
+
+  public getMaster(): IConfigMinio|undefined {
+    return this.data.master;
+  }
+
+  public getSlaves(): IConfigMinio[] {
+    return this.data.slaves || [];
+  }
+
+  public getCache(): ICacheConfig {
+    return this.data.cache;
+  }
+
 }

@@ -8,19 +8,29 @@ import { WorkQueue } from './WorkQueue';
 import CloneObjectWork from './Works/CloneObjectWork';
 import DeleteObjectWork from './Works/DeleteObjectWork';
 import ConfigRepository from './ConfigRepository';
+import ContainerHelper from './ContainerHelper';
 
 @injectable()
 export default class Clonner {
   public static async start(config: ConfigRepository, bucketNames?: string[], progressbar?: SingleBar) {
     const clonner = container.resolve(Clonner);
-    clonner.setSource(config.getPrimaryUpstream());
+    clonner.setSource(config.isMaster() ? ContainerHelper.getMinio() : ContainerHelper.getMaster());
     clonner.setProgressBar(progressbar);
 
-    for (const peer of config.getUpstreams(false)) {
+    const runClone = async (dist: Upstream) => {
       try {
-        await clonner.cloneBuckets(peer, bucketNames);
+        return await clonner.cloneBuckets(dist, bucketNames);
       } catch (e) {
-        console.error(`error during cloning buckets to ${peer.getURL().toString()}`, e);
+        console.error(`error during cloning buckets to ${dist.getURL().toString()}`, e);
+      }
+    }
+
+    if (config.isSlave()) {
+      const me = ContainerHelper.getMinio();
+      await runClone(me);
+    } else {
+      for (const peer of ContainerHelper.getSalves()) {
+        await runClone(peer);
       }
     }
   }
@@ -132,122 +142,126 @@ export default class Clonner {
     await this.cloneObjects(dist, bucket);
   }
 
-  public async cloneObjects(dist: Upstream, bucket: string): Promise<void> {
-    this.logger.info('cloning objects in bucket', { dist: dist.getURL().toString(), bucket });
+  public cloneObjects(dist: Upstream, bucket: string): Promise<void> {
+    return new Promise((resolve) => {
+      this.logger.info('cloning objects in bucket', { dist: dist.getURL().toString(), bucket });
 
-    const source = this.getSource();
-    const diffList = new BucketItemDiffList();
-    const queue = new WorkQueue(dist);
-    queue.setMaxRunning(8);
+      const source = this.getSource();
+      const diffList = new BucketItemDiffList();
+      const queue = new WorkQueue(dist);
+      queue.setMaxRunning(8);
 
-    const sourceStream = source.getClient().listObjectsV2(bucket, undefined, true);
-    sourceStream.on('data', (object) => {
-      diffList.addSource(object);
-    });
-    sourceStream.on('end', () => {
-      diffList.addSource(null);
-      if (diffList.isEnded() && queue.isIddle()) {
-        this.progressBar?.stop();
-      }
-    });
-
-    const distStream = dist.getClient().listObjectsV2(bucket, undefined, true);
-    distStream.on('data', (object) => {
-      diffList.addDist(object);
-    });
-    distStream.on('end', () => {
-      diffList.addDist(null);
-      if (diffList.isEnded() && queue.isIddle()) {
-        this.progressBar?.stop();
-      }
-    });
-
-    queue.on("added", () => {
-      if (queue.length() >= queue.getMaxRunning()) {
-        if (!sourceStream.isPaused()) {
-          sourceStream.pause();
-        }
-        if (!distStream.isPaused()) {
-          distStream.pause();
-        }
-      }
-    });
-    queue.on("finished", () => {
-      if (queue.length() < queue.getMaxRunning()) {
-        if (sourceStream.isPaused()) {
-          sourceStream.resume();
-        }
-        if (distStream.isPaused()) {
-          distStream.resume();
-        }
-      }
-    });
-
-    const doneHandler = (size: number) => {
-      if (this.progressBar !== undefined) {
-        this.progressBar.increment(size, { workers: queue.getRunning() });
-      }
-    };
-    const errorHandler = (message: string, object: BucketItem, reason: any) => {
-      this.logger.error(message, {
-        source: source.getURL().toString(),
-        dist: dist.getURL().toString(),
-        bucket,
-        object: object.name,
-        reason,
+      const sourceStream = source.getClient().listObjectsV2(bucket, undefined, true);
+      sourceStream.on('data', (object) => {
+        diffList.addSource(object);
       });
-    };
-
-    diffList.on('created', (object) => {
-      this.logger.debug('object is created', {
-        dist: dist.getURL().toString(),
-        bucket,
-        object,
-      });
-      if (this.progressBar !== undefined) {
-        this.progressBar.setTotal(this.progressBar.getTotal() + object.size);
-      }
-
-      queue.enqueue(new CloneObjectWork(source, bucket, object.name)).then(
-        () => doneHandler(object.size),
-        (reason) => errorHandler('object creation failed', object, reason),
-      );
-    });
-    diffList.on('changed', (current, old) => {
-      this.logger.debug('object is changed', {
-        dist: dist.getURL().toString(),
-        bucket,
-        current,
-        old,
-      });
-      if (this.progressBar !== undefined) {
-        this.progressBar.setTotal(this.progressBar.getTotal() + current.size);
-      }
-      queue.enqueue(new CloneObjectWork(source, bucket, current.name)).then(
-        () => doneHandler(current.size),
-        (reason) => errorHandler('object update failed', current, reason),
-      );
-    });
-    diffList.on('deleted', (object) => {
-      this.logger.debug('object is deleted', {
-        source: source.getURL().toString(),
-        dist: dist.getURL().toString(),
-        bucket,
-        object: object.name,
-
+      sourceStream.on('end', () => {
+        diffList.addSource(null);
+        if (diffList.isEnded() && queue.isIddle()) {
+          this.progressBar?.stop();
+          resolve();
+        }
       });
 
-      const size = 1024; // static value of http request size
+      const distStream = dist.getClient().listObjectsV2(bucket, undefined, true);
+      distStream.on('data', (object) => {
+        diffList.addDist(object);
+      });
+      distStream.on('end', () => {
+        diffList.addDist(null);
+        if (diffList.isEnded() && queue.isIddle()) {
+          this.progressBar?.stop();
+          resolve();
+        }
+      });
+
+      queue.on("added", () => {
+        if (queue.length() >= queue.getMaxRunning()) {
+          if (!sourceStream.isPaused()) {
+            sourceStream.pause();
+          }
+          if (!distStream.isPaused()) {
+            distStream.pause();
+          }
+        }
+      });
+      queue.on("finished", () => {
+        if (queue.length() < queue.getMaxRunning()) {
+          if (sourceStream.isPaused()) {
+            sourceStream.resume();
+          }
+          if (distStream.isPaused()) {
+            distStream.resume();
+          }
+        }
+      });
+
+      const doneHandler = (size: number) => {
+        if (this.progressBar !== undefined) {
+          this.progressBar.increment(size, { workers: queue.getRunning() });
+        }
+      };
+      const errorHandler = (message: string, object: BucketItem, reason: any) => {
+        this.logger.error(message, {
+          source: source.getURL().toString(),
+          dist: dist.getURL().toString(),
+          bucket,
+          object: object.name,
+          reason,
+        });
+      };
+
+      diffList.on('created', (object) => {
+        this.logger.debug('object is created', {
+          dist: dist.getURL().toString(),
+          bucket,
+          object,
+        });
+        if (this.progressBar !== undefined) {
+          this.progressBar.setTotal(this.progressBar.getTotal() + object.size);
+        }
+
+        queue.enqueue(new CloneObjectWork(source, bucket, object.name)).then(
+          () => doneHandler(object.size),
+          (reason) => errorHandler('object creation failed', object, reason),
+        );
+      });
+      diffList.on('changed', (current, old) => {
+        this.logger.debug('object is changed', {
+          dist: dist.getURL().toString(),
+          bucket,
+          current,
+          old,
+        });
+        if (this.progressBar !== undefined) {
+          this.progressBar.setTotal(this.progressBar.getTotal() + current.size);
+        }
+        queue.enqueue(new CloneObjectWork(source, bucket, current.name)).then(
+          () => doneHandler(current.size),
+          (reason) => errorHandler('object update failed', current, reason),
+        );
+      });
+      diffList.on('deleted', (object) => {
+        this.logger.debug('object is deleted', {
+          source: source.getURL().toString(),
+          dist: dist.getURL().toString(),
+          bucket,
+          object: object.name,
+
+        });
+
+        const size = 1024; // static value of http request size
+        if (this.progressBar !== undefined) {
+          this.progressBar.setTotal(this.progressBar.getTotal() + size);
+        }
+        queue.enqueue(new DeleteObjectWork(bucket, object.name)).then(
+          () => doneHandler(size),
+          (reason) => errorHandler('object delete failed', object, reason),
+        );
+      });
       if (this.progressBar !== undefined) {
-        this.progressBar.setTotal(this.progressBar.getTotal() + size);
+        this.progressBar.start(0, 0, { workers: 0 });
       }
-      queue.enqueue(new DeleteObjectWork(bucket, object.name)).then(
-        () => doneHandler(size),
-        (reason) => errorHandler('object delete failed', object, reason),
-      );
     });
-    if (this.progressBar !== undefined) {
-      this.progressBar.start(0, 0, { workers: 0 });
-    }
   }
 }

@@ -123,7 +123,16 @@ export default class Upstream {
     this.removeAbsentObject(bucket, key);
   }
 
-  public removePresentObject(bucket: string, key: string): void {
+  public removePresentObject(bucket: string, key?: string): void {
+    if (key === undefined) {
+      for (const objectKey of this.presentObjects.keys()) {
+        if (objectKey.startsWith(bucket)) {
+          this.presentObjects.delete(objectKey);
+        }
+      }
+
+      return;
+    }
     if (this.presentObjects.has(`${bucket}/${key}`)) {
       this.presentObjects.delete(`${bucket}/${key}`);
     }
@@ -134,7 +143,17 @@ export default class Upstream {
     this.removePresentObject(bucket, key);
   }
 
-  public removeAbsentObject(bucket: string, key: string): void {
+  public removeAbsentObject(bucket: string, key?: string): void {
+    if (key === undefined) {
+      for (const objectKey of this.absentObjects.keys()) {
+        if (objectKey.startsWith(bucket)) {
+          this.absentObjects.delete(objectKey);
+        }
+      }
+
+      return;
+    }
+  
     if (this.absentObjects.has(`${bucket}/${key}`)) {
       this.absentObjects.delete(`${bucket}/${key}`);
     }

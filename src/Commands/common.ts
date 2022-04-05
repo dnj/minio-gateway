@@ -1,7 +1,9 @@
 import { program } from 'commander';
 import { container } from 'tsyringe';
-import winston from 'winston';
-import ConfigRepository, { ILoggingConfig } from '../ConfigRepository';
+import winston, { format } from 'winston';
+import CacheManager from '../CacheManager';
+import ConfigRepository, { IConfigMinio, ILoggingConfig } from '../ConfigRepository';
+import Upstream from '../Upstream';
 
 export async function setupConfig() {
   const config = await ConfigRepository.fromFile(program.getOptionValue('config'));
@@ -40,6 +42,10 @@ export function setupLogger() {
 
   const logger = winston.createLogger({
     transports,
+    format: format.combine(
+      format.timestamp(),
+      format.json()
+    ),
     level: loggingConfig.level,
   });
 
@@ -48,8 +54,25 @@ export function setupLogger() {
   return logger;
 }
 
+export function registerUpstreams(): void {
+  const cacheManager = container.resolve(CacheManager);
+  const register = (name: string, config: IConfigMinio) => {
+    const instance = new Upstream(new URL(config.url), config.accessKey, config.secretKey, cacheManager);
+    container.registerInstance<Upstream>(name, instance);
+  };
+  const config = container.resolve(ConfigRepository);
+  register("minio", config.getMinio());
+  if (config.isSlave()) {
+    register("master", config.getMaster() as IConfigMinio);
+  }
+  for (const slave of config.getSlaves()) {
+    register("slave", slave);
+  }
+}
+
 export async function setup() {
   const config = await setupConfig();
   const logger = setupLogger();
+  registerUpstreams();
   return { config, logger };
 }
