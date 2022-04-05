@@ -107,7 +107,11 @@ export default class Server {
       action: action?.constructor.name,
       method: request.method,
       upstream: upstream.getURL().toString(),
+      ip: request.socket.remoteAddress,
     };
+    if (typeof request.headers["x-forwarded-for"] === "string") {
+      log["x-forwarded-for"] = request.headers["x-forwarded-for"];
+    }
     if (action !== undefined) {
       for (const key in action) {
         if (key !== "request" && key !== "method" && key !== "parameters") {
