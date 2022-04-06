@@ -1,6 +1,6 @@
 {
   "name": "@dnj/minio-gateway",
-  "version": "0.0.8",
+  "version": "0.1.0",
   "private": false,
   "bin": "dist/index.js",
   "license": "MIT",
