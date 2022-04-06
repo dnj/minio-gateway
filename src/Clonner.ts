@@ -35,6 +35,35 @@ export default class Clonner {
     }
   }
 
+  public static async startSingle(
+    config: ConfigRepository,
+    bucket: string,
+    progressbar?: SingleBar,
+    prefix?: string,
+    after?: string
+  ) {
+    const clonner = container.resolve(Clonner);
+    clonner.setSource(config.isMaster() ? ContainerHelper.getMinio() : ContainerHelper.getMaster());
+    clonner.setProgressBar(progressbar);
+
+    const runClone = async (dist: Upstream) => {
+      try {
+        return await clonner.cloneBucket(dist, bucket, prefix, after);
+      } catch (e) {
+        console.error(`error during cloning bucket ${bucket} to ${dist.getURL().toString()}`, e);
+      }
+    }
+
+    if (config.isSlave()) {
+      const me = ContainerHelper.getMinio();
+      await runClone(me);
+    } else {
+      for (const peer of ContainerHelper.getSalves()) {
+        await runClone(peer);
+      }
+    }
+  }
+
   private source: Upstream | undefined;
 
   private progressBar: SingleBar | undefined;
@@ -79,7 +108,7 @@ export default class Clonner {
     }
   }
 
-  public async cloneBucket(dist: Upstream, bucket: string): Promise<void> {
+  public async cloneBucket(dist: Upstream, bucket: string, prefix?: string, after?: string): Promise<void> {
     this.logger.info('cloning bucket', { dist: dist.getURL().toString(), bucket });
 
     const srcAPI = this.getSource().getClient();
@@ -140,10 +169,10 @@ export default class Clonner {
       taggingSync(),
       versionningSync(),
     ]);
-    await this.cloneObjects(dist, bucket);
+    await this.cloneObjects(dist, bucket, prefix, after);
   }
 
-  public cloneObjects(dist: Upstream, bucket: string): Promise<void> {
+  public cloneObjects(dist: Upstream, bucket: string, prefix?: string, after?: string): Promise<void> {
     return new Promise((resolve) => {
       this.logger.info('cloning objects in bucket', { dist: dist.getURL().toString(), bucket });
 
@@ -153,7 +182,7 @@ export default class Clonner {
       const maxRunning = this.config.getClone().maxRunning || 8;
       queue.setMaxRunning(maxRunning);
 
-      const sourceStream = source.getClient().listObjectsV2(bucket, undefined, true);
+      const sourceStream = source.getClient().listObjectsV2(bucket, prefix, true, after);
       sourceStream.on('data', (object) => {
         diffList.addSource(object);
       });
@@ -165,7 +194,7 @@ export default class Clonner {
         }
       });
 
-      const distStream = dist.getClient().listObjectsV2(bucket, undefined, true);
+      const distStream = dist.getClient().listObjectsV2(bucket, prefix, true, after);
       distStream.on('data', (object) => {
         diffList.addDist(object);
       });
