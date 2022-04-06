@@ -57,7 +57,7 @@ export function setupLogger() {
 export function registerUpstreams(): void {
   const cacheManager = container.resolve(CacheManager);
   const register = (name: string, config: IConfigMinio) => {
-    const instance = new Upstream(new URL(config.url), config.accessKey, config.secretKey, cacheManager);
+    const instance = new Upstream(new URL(config.url), config.accessKey, config.secretKey, config.region, cacheManager);
     container.registerInstance<Upstream>(name, instance);
   };
   const config = container.resolve(ConfigRepository);

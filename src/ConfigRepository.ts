@@ -7,6 +7,7 @@ export interface IConfigMinio {
   url: string;
   accessKey: string;
   secretKey: string;
+  region: string;
 }
 interface IHttpServerConfig {
   port: number;
@@ -50,6 +51,7 @@ const upstreamSchema: JSONSchemaType<IConfigMinio> = {
     url: { type: 'string' },
     accessKey: { type: 'string' },
     secretKey: { type: 'string' },
+    region: { type : 'string' },
   },
   required: ['url', 'accessKey', 'secretKey'],
   additionalProperties: false,

@@ -20,6 +20,7 @@ export default class Upstream {
     protected url: URL,
     protected accessKey: string,
     protected secretKey: string,
+    protected region: string,
     protected cacheManager: CacheManager,
   ) {
     this.presentObjects = new SortedSet();
@@ -104,6 +105,7 @@ export default class Upstream {
         accessKey: this.accessKey,
         secretKey: this.secretKey,
         useSSL: this.url.protocol === 'https',
+        region: this.region
       });
     }
     return this.client;
