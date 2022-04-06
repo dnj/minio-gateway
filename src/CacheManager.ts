@@ -114,7 +114,7 @@ export default class CacheManager {
         source: upstream.getURL().toString(),
         bucket: action.bucket,
       });
-      return this.addWorkForPeers(upstream, () => new CreateBucketWork(action.bucket, ''));
+      return this.addWorkForSlaves(upstream, () => new CreateBucketWork(action.bucket, ''));
     }
   }
 
@@ -130,7 +130,7 @@ export default class CacheManager {
         source: upstream.getURL().toString(),
         bucket: action.bucket,
       });
-      return this.addWorkForPeers(upstream, () => new DeleteBucketWork(action.bucket));
+      return this.addWorkForSlaves(upstream, () => new DeleteBucketWork(action.bucket));
     }
   }
 
@@ -148,7 +148,7 @@ export default class CacheManager {
         source: upstream.getURL().toString(),
         bucket: action.bucket,
       });
-      return this.addWorkForPeers(upstream, () => new UpdateBucketPolicyWork(upstream, action.bucket));
+      return this.addWorkForSlaves(upstream, () => new UpdateBucketPolicyWork(upstream, action.bucket));
     }
   }
 
@@ -162,7 +162,7 @@ export default class CacheManager {
       source: upstream.getURL().toString(),
       bucket: action.bucket,
     });
-    return this.addWorkForPeers(upstream, () => new UpdateBucketTaggingWork(upstream, action.bucket));
+    return this.addWorkForSlaves(upstream, () => new UpdateBucketTaggingWork(upstream, action.bucket));
   }
 
   protected handlePutBucketVersioning(upstream: Upstream, action: PutBucketVersioning, response: IncomingMessage) {
@@ -175,7 +175,7 @@ export default class CacheManager {
       source: upstream.getURL().toString(),
       bucket: action.bucket,
     });
-    return this.addWorkForPeers(upstream, () => new UpdateBucketVersioningWork(upstream, action.bucket));
+    return this.addWorkForSlaves(upstream, () => new UpdateBucketVersioningWork(upstream, action.bucket));
   }
 
   protected handlePutBucketLifecycle(upstream: Upstream, action: PutBucketLifecycleConfiguration, response: IncomingMessage) {
@@ -188,7 +188,7 @@ export default class CacheManager {
       source: upstream.getURL().toString(),
       bucket: action.bucket,
     });
-    return this.addWorkForPeers(upstream, () => new UpdateBucketLifecycleWork(upstream, action.bucket));
+    return this.addWorkForSlaves(upstream, () => new UpdateBucketLifecycleWork(upstream, action.bucket));
   }
 
   protected handlePutObjectLockConfiguration(upstream: Upstream, action: PutObjectLockConfiguration, response: IncomingMessage) {
@@ -201,7 +201,7 @@ export default class CacheManager {
       source: upstream.getURL().toString(),
       bucket: action.bucket,
     });
-    return this.addWorkForPeers(upstream, () => new UpdateObjectLockConfigurationWork(upstream, action.bucket));
+    return this.addWorkForSlaves(upstream, () => new UpdateObjectLockConfigurationWork(upstream, action.bucket));
   }
 
   protected handlePutBucketNotification(upstream: Upstream, action: PutBucketNotificationConfiguration, response: IncomingMessage) {
@@ -213,7 +213,7 @@ export default class CacheManager {
       source: upstream.getURL().toString(),
       bucket: action.bucket,
     });
-    return this.addWorkForPeers(upstream, () => new UpdateBucketNotificationWork(upstream, action.bucket));
+    return this.addWorkForSlaves(upstream, () => new UpdateBucketNotificationWork(upstream, action.bucket));
   }
 
   protected handleGetObject(upstream: Upstream, action: GetObject, response: IncomingMessage) {
@@ -222,6 +222,35 @@ export default class CacheManager {
     }
     if (response.statusCode >= 200 && response.statusCode < 300) {
       upstream.addPresentObject(action.bucket, action.key);
+      if (!this.config.isSlave()) {
+        return;
+      }
+      const minio = ContainerHelper.getMinio();
+      if (minio === upstream) {
+        return;
+      }
+      const master = ContainerHelper.getMaster() as Upstream;
+      if (master.hasObjectOffline(action.bucket, action.key) === false) {
+        return;
+      }
+      this.logger.info("Add work to clone object from master to minio", {
+        work: "CloneObjectWork",
+        source: master.getURL().toString(),
+        bucket: action.bucket,
+        key: action.key,
+      });
+      minio.workQueue.enqueue(new CloneObjectWork(master, action.bucket, action.key)).then(() => {
+        minio.removeAbsentObject(action.bucket, action.key);
+      }).catch((err) => {
+        this.logger.error("Error in cloning object from master to minio", {
+          work: "CloneObjectWork",
+          source: master.getURL().toString(),
+          bucket: action.bucket,
+          key: action.key,
+          error: err,
+        });
+      });
+
     } else if (response.statusCode === 404) {
       upstream.addAbsentObject(action.bucket, action.key);
     }
@@ -245,7 +274,7 @@ export default class CacheManager {
         bucket: action.bucket,
         key: action.key,
       });
-      return this.addWorkForPeers(upstream, () => new CloneObjectWork(upstream, action.bucket, action.key));
+      return this.addWorkForSlaves(upstream, () => new CloneObjectWork(upstream, action.bucket, action.key));
     }
   }
 
@@ -263,7 +292,7 @@ export default class CacheManager {
         bucket: action.bucket,
         key: action.key,
       });
-      return this.addWorkForPeers(upstream, () => new DeleteObjectWork(action.bucket, action.key));
+      return this.addWorkForSlaves(upstream, () => new DeleteObjectWork(action.bucket, action.key));
     }
   }
 
@@ -286,7 +315,7 @@ export default class CacheManager {
     return (response.statusCode !== undefined && response.statusCode >= 200 && response.statusCode < 300);
   }
 
-  protected addWorkForPeers<T>(source: Upstream, callback: (peer: Upstream) => Work<T>) {
+  protected addWorkForSlaves<T>(source: Upstream, callback: (peer: Upstream) => Work<T>) {
     return Promise.allSettled(ContainerHelper.getSalves()
       .map((peer) => {
         const work = callback(peer);
