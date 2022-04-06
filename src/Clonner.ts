@@ -182,28 +182,44 @@ export default class Clonner {
       const maxRunning = this.config.getClone().maxRunning || 8;
       queue.setMaxRunning(maxRunning);
 
-      const sourceStream = source.getClient().listObjectsV2(bucket, prefix, true, after);
-      sourceStream.on('data', (object) => {
-        diffList.addSource(object);
-      });
-      sourceStream.on('end', () => {
+
+      const onSourceStreamEnd = () => {
         diffList.addSource(null);
         if (diffList.isEnded() && queue.isIddle()) {
           this.progressBar?.stop();
           resolve();
         }
+      };
+      const sourceStream = source.getClient().listObjectsV2(bucket, prefix, true, after);
+      sourceStream.on('data', (object) => {
+        diffList.addSource(object);
+      });
+      sourceStream.on('end', onSourceStreamEnd);
+      sourceStream.on("error", (err) => {
+        this.logger.error("Error in source upstream occured", {
+          err: err,
+        });
+        onSourceStreamEnd();
       });
 
-      const distStream = dist.getClient().listObjectsV2(bucket, prefix, true, after);
-      distStream.on('data', (object) => {
-        diffList.addDist(object);
-      });
-      distStream.on('end', () => {
+
+      const onDistStreamEnd = () => {
         diffList.addDist(null);
         if (diffList.isEnded() && queue.isIddle()) {
           this.progressBar?.stop();
           resolve();
         }
+      };
+      const distStream = dist.getClient().listObjectsV2(bucket, prefix, true, after);
+      distStream.on('data', (object) => {
+        diffList.addDist(object);
+      });
+      distStream.on('end', onDistStreamEnd);
+      distStream.on("error", (err) => {
+        this.logger.error("Error in dist upstream occured", {
+          err: err,
+        });
+        onDistStreamEnd();
       });
 
       queue.on("added", () => {
