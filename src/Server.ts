@@ -50,6 +50,7 @@ export default class Server {
     const master = ContainerHelper.getMaster();
 
     if (
+      master !== undefined &&
       canProxyToPeers &&
       action !== undefined &&
       ( action instanceof GetObject || action instanceof HeadObject ) &&
