@@ -1,7 +1,7 @@
 import * as http from 'http';
 import ConfigRepository from './ConfigRepository';
 import RequestIdeafinder from './RequestIdeafinder';
-import { GetObject, PutObject } from './S3Requests';
+import { GetObject, HeadObject, PutObject } from './S3Requests';
 import Upstream from './Upstream';
 import Admin from './admin';
 import { inject, injectable } from 'tsyringe';
@@ -52,7 +52,7 @@ export default class Server {
     if (
       canProxyToPeers &&
       action !== undefined &&
-      action instanceof GetObject &&
+      ( action instanceof GetObject || action instanceof HeadObject ) &&
       !await minio.hasObject(action.bucket, action.key)
     ) {
       this.proxyToPeers(action, response);
@@ -66,7 +66,7 @@ export default class Server {
     this.proxyToMinio(action || request, response);
   }
 
-  protected async proxyToPeers(action: GetObject, response: http.ServerResponse) {
+  protected async proxyToPeers(action: GetObject | HeadObject, response: http.ServerResponse) {
     const upstreams = arrayShuffle(ContainerHelper.getSalves());
     const master = ContainerHelper.getMaster();
     if (master) {

@@ -1,7 +1,7 @@
 import { IncomingMessage } from 'http';
 import ConfigRepository from './ConfigRepository';
 import {
-  CompleteMultipartUpload, CopyObject, CreateBucket, DeleteBucket, DeleteObject, DeleteObjects, GetObject, PutBucketLifecycleConfiguration, PutBucketNotificationConfiguration, PutBucketPolicy, PutBucketTagging, PutBucketVersioning, PutObject, PutObjectLockConfiguration,
+  CompleteMultipartUpload, CopyObject, CreateBucket, DeleteBucket, DeleteObject, DeleteObjects, GetObject, HeadObject, PutBucketLifecycleConfiguration, PutBucketNotificationConfiguration, PutBucketPolicy, PutBucketTagging, PutBucketVersioning, PutObject, PutObjectLockConfiguration,
 } from './S3Requests';
 import Action from './S3Requests/Action';
 import Upstream from './Upstream';
@@ -61,7 +61,7 @@ export default class CacheManager {
       return this.handleDeleteBucket(upstream, action, response);
     }
 
-    if (action instanceof GetObject) {
+    if (action instanceof GetObject || action instanceof HeadObject) {
       return this.handleGetObject(upstream, action, response);
     }
   
@@ -216,7 +216,7 @@ export default class CacheManager {
     return this.addWorkForSlaves(upstream, () => new UpdateBucketNotificationWork(upstream, action.bucket));
   }
 
-  protected handleGetObject(upstream: Upstream, action: GetObject, response: IncomingMessage) {
+  protected handleGetObject(upstream: Upstream, action: GetObject | HeadObject, response: IncomingMessage) {
     if (response.statusCode === undefined) {
       return;
     }
