@@ -70,6 +70,8 @@ export default class CacheManager {
       || action instanceof CompleteMultipartUpload
       || action instanceof CopyObject
     ) {
+
+
       return this.handlePutObject(upstream, action, response);
     }
 
@@ -275,6 +277,28 @@ export default class CacheManager {
         key: action.key,
       });
       return this.addWorkForSlaves(upstream, () => new CloneObjectWork(upstream, action.bucket, action.key));
+    } else {
+      const minio = ContainerHelper.getMinio();
+      if (minio === upstream) {
+        return;
+      }
+      this.logger.info("Add work to clone object from upstream to minio", {
+        work: "CloneObjectWork",
+        source: upstream.getURL().toString(),
+        bucket: action.bucket,
+        key: action.key,
+      });
+      minio.workQueue.enqueue(new CloneObjectWork(upstream, action.bucket, action.key)).then(() => {
+        minio.removeAbsentObject(action.bucket, action.key);
+      }).catch((err) => {
+        this.logger.error("Error in cloning object from master to minio", {
+          work: "CloneObjectWork",
+          source: upstream.getURL().toString(),
+          bucket: action.bucket,
+          key: action.key,
+          error: err,
+        });
+      });
     }
   }
 
