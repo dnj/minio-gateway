@@ -1,0 +1,40 @@
+name: Deploy on servers
+on:
+  workflow_run:
+    workflows: ["npm-publish"]
+    types:
+      - completed
+  workflow_dispatch:
+jobs:
+  fr-1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install SSH Key
+        uses: garygrossgarten/github-action-ssh@release
+        with:
+          host: s3.fr-1.jeyserver.com
+          username: root
+          privateKey: ${{ secrets.SSH_DEPLOY_PRIVATE_KEY}}
+          command: |
+            npm install @dnj/minio-gateway
+            service minio-gateway restart
+    environment:
+      name: s3.fr-1.jeyserver.com
+      url: https://s3.fr-1.jeyserver.com
+
+
+  de-1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install SSH Key
+        uses: garygrossgarten/github-action-ssh@release
+        with:
+          host: s3.de-1.jeyserver.com
+          username: root
+          privateKey: ${{ secrets.SSH_DEPLOY_PRIVATE_KEY}}
+          command: |
+            npm install @dnj/minio-gateway
+            service minio-gateway restart
+    environment:
+      name: s3.de-1.jeyserver.com
+      url: https://s3.de-1.jeyserver.com
