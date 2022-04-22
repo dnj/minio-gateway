@@ -34,12 +34,12 @@ export default class ActionIdeafinder {
     let key: string | undefined;
     if (url.hostname.endsWith(`.${mainEndpoint}`)) {
       bucket = url.hostname.substring(0, url.hostname.length - mainEndpoint.length - 1);
-      key = this.ltrim(url.pathname, '/');
+      key = decodeURIComponent(this.ltrim(url.pathname, '/'));
     } else {
       const matches = url.pathname.match(/(?:^|\/)([a-z0-9\.\_\-]{1,63})($|\/.*)/);
       if (matches && matches.length) {
         bucket = matches[1];
-        key = this.ltrim(matches[2], '/');
+        key = decodeURIComponent(this.ltrim(matches[2], '/'));
       }
     }
     if (key !== undefined && key.length === 0) {
