@@ -9,14 +9,14 @@ jobs:
   fr-1:
     runs-on: ubuntu-latest
     steps:
-      - name: Install SSH Key
+      - name: Deploy using ssh
         uses: garygrossgarten/github-action-ssh@release
         with:
           host: s3.fr-1.jeyserver.com
           username: root
           privateKey: ${{ secrets.SSH_DEPLOY_PRIVATE_KEY}}
           command: |
-            npm install @dnj/minio-gateway
+            npm install -g @dnj/minio-gateway@${{ env.GITHUB_REF_NAME }}
             service minio-gateway restart
     environment:
       name: s3.fr-1.jeyserver.com
@@ -26,14 +26,14 @@ jobs:
   de-1:
     runs-on: ubuntu-latest
     steps:
-      - name: Install SSH Key
+      - name: Deploy using ssh
         uses: garygrossgarten/github-action-ssh@release
         with:
           host: s3.de-1.jeyserver.com
           username: root
           privateKey: ${{ secrets.SSH_DEPLOY_PRIVATE_KEY}}
           command: |
-            npm install @dnj/minio-gateway
+            npm install -g @dnj/minio-gateway@${{ env.GITHUB_REF_NAME }}
             service minio-gateway restart
     environment:
       name: s3.de-1.jeyserver.com
